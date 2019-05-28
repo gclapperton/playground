@@ -79,6 +79,10 @@ body {
   }
 }
 
+#svg {
+  overflow: visible;
+}
+
 /* Buttons */
 
 #main-part .mdl-button {

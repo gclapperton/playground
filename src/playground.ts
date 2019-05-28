@@ -25,9 +25,11 @@ import {
   getKeyFromValue,
   Problem
 } from "./state";
-import {Example2D, shuffle} from "./dataset";
+import {Example, shuffle, DataSet} from "./dataset";
 import {AppendingLineChart} from "./linechart";
 import * as d3 from 'd3';
+
+import {classifyDiabetes} from "./diabetes";
 
 let mainWidth;
 
@@ -58,19 +60,21 @@ enum HoverType {
 }
 
 interface InputFeature {
-  f: (x: number, y: number) => number;
+  f: (p) => number;
   label?: string;
 }
 
-let INPUTS: {[name: string]: InputFeature} = {
-  "x": {f: (x, y) => x, label: "X_1"},
-  "y": {f: (x, y) => y, label: "X_2"},
-  "xSquared": {f: (x, y) => x * x, label: "X_1^2"},
-  "ySquared": {f: (x, y) => y * y,  label: "X_2^2"},
-  "xTimesY": {f: (x, y) => x * y, label: "X_1X_2"},
-  "sinX": {f: (x, y) => Math.sin(x), label: "sin(X_1)"},
-  "sinY": {f: (x, y) => Math.sin(y), label: "sin(X_2)"},
+let DefaultInputs: {[name: string]: InputFeature} = {
+  "x": {f: ({x, y}) => x, label: "X_1"},
+  "y": {f: ({x, y}) => y, label: "X_2"},
+  "xSquared": {f: ({x, y}) => x * x, label: "X_1^2"},
+  "ySquared": {f: ({x, y}) => y * y,  label: "X_2^2"},
+  "xTimesY": {f: ({x, y}) => x * y, label: "X_1X_2"},
+  "sinX": {f: ({x, y}) => Math.sin(x), label: "sin(X_1)"},
+  "sinY": {f: ({x, y}) => Math.sin(y), label: "sin(X_2)"},
 };
+
+let INPUTS: {[name: string]: InputFeature} = DefaultInputs;
 
 let HIDABLE_CONTROLS = [
   ["Show test data", "showTestData"],
@@ -166,8 +170,8 @@ let colorScale = d3.scale.linear<string, number>()
                      .range(["#f59322", "#e8eaeb", "#0877bd"])
                      .clamp(true);
 let iter = 0;
-let trainData: Example2D[] = [];
-let testData: Example2D[] = [];
+let trainData: DataSet<Example>;
+let testData: DataSet<Example>;
 let network: nn.Node[][] = null;
 let lossTrain = 0;
 let lossTest = 0;
@@ -268,7 +272,7 @@ function makeGUI() {
     state.showTestData = this.checked;
     state.serialize();
     userHasInteracted();
-    heatMap.updateTestPoints(state.showTestData ? testData : []);
+    heatMap.updateTestPoints(state.showTestData ? testData.to2D() : []);
   });
   // Check/uncheck the checkbox according to the current state.
   showTestData.property("checked", state.showTestData);
@@ -471,7 +475,10 @@ function drawNode(cx: number, cy: number, nodeId: string, isInput: boolean,
         text.append("tspan").text(label.substring(lastIndex));
       }
     } else {
-      text.append("tspan").text(label);
+      label.split(" ")
+           .forEach((s, i) => text.append("tspan")
+                                  .attr({x: -10, dy: i == 0 ? 0 : "1.2em"})
+                                  .text(s));
     }
     nodeGroup.classed(activeOrNotClass, true);
   }
@@ -632,7 +639,7 @@ function drawNetwork(network: nn.Node[][]): void {
   }
 
   // Draw the output node separately.
-  cx = width + RECT_SIZE / 2;
+  cx = width + RECT_SIZE / 2 - 3;
   let node = network[numLayers - 1][0];
   let cy = nodeIndexScale(0) + RECT_SIZE / 2;
   node2coord[node.id] = {cx, cy};
@@ -822,7 +829,10 @@ function updateDecisionBoundary(network: nn.Node[][], firstTime: boolean) {
       // 1 for points inside the circle, and 0 for points outside the circle.
       let x = xScale(i);
       let y = yScale(j);
-      let input = constructInput(x, y);
+
+      let p = trainData.decode({x, y});
+      let input = constructInput(p);
+
       nn.forwardProp(network, input);
       nn.forEachNode(network, true, node => {
         boundary[node.id][i][j] = node.output;
@@ -830,22 +840,22 @@ function updateDecisionBoundary(network: nn.Node[][], firstTime: boolean) {
       if (firstTime) {
         // Go through all predefined inputs.
         for (let nodeId in INPUTS) {
-          boundary[nodeId][i][j] = INPUTS[nodeId].f(x, y);
+          boundary[nodeId][i][j] = INPUTS[nodeId].f(p);
         }
       }
     }
   }
 }
 
-function getLoss(network: nn.Node[][], dataPoints: Example2D[]): number {
-  let loss = 0;
-  for (let i = 0; i < dataPoints.length; i++) {
-    let dataPoint = dataPoints[i];
-    let input = constructInput(dataPoint.x, dataPoint.y);
+function getLoss(network: nn.Node[][], dataPoints: DataSet<Example>): number {
+
+  let loss = dataPoints.data.reduce((loss, dataPoint) => {
+    let input = constructInput(dataPoint);
     let output = nn.forwardProp(network, input);
-    loss += nn.Errors.SQUARE.error(output, dataPoint.label);
-  }
-  return loss / dataPoints.length;
+    return loss + nn.Errors.SQUARE.error(output, dataPoint.label);
+  }, 0);
+
+  return loss / dataPoints.data.length;
 }
 
 function updateUI(firstStep = false) {
@@ -896,11 +906,11 @@ function constructInputIds(): string[] {
   return result;
 }
 
-function constructInput(x: number, y: number): number[] {
+function constructInput(p): number[] {
   let input: number[] = [];
   for (let inputName in INPUTS) {
     if (state[inputName]) {
-      input.push(INPUTS[inputName].f(x, y));
+      input.push(INPUTS[inputName].f(p));
     }
   }
   return input;
@@ -908,8 +918,8 @@ function constructInput(x: number, y: number): number[] {
 
 function oneStep(): void {
   iter++;
-  trainData.forEach((point, i) => {
-    let input = constructInput(point.x, point.y);
+  trainData.data.forEach((point, i) => {
+    let input = constructInput(point);
     nn.forwardProp(network, input);
     nn.backProp(network, point.label, nn.Errors.SQUARE);
     if ((i + 1) % state.batchSize === 0) {
@@ -951,7 +961,7 @@ function reset(onStartup=false) {
 
   // Make a simple network.
   iter = 0;
-  let numInputs = constructInput(0 , 0).length;
+  let numInputs = constructInput({x: 0 , y: 0}).length;
   let shape = [numInputs].concat(state.networkShape).concat([1]);
   let outputActivation = (state.problem === Problem.REGRESSION) ?
       nn.Activations.LINEAR : nn.Activations.TANH;
@@ -991,14 +1001,22 @@ function initTutorial() {
 }
 
 function drawDatasetThumbnails() {
-  function renderThumbnail(canvas, dataGenerator) {
+  function renderThumbnail(canvas, dataset) {
     let w = 100;
     let h = 100;
     canvas.setAttribute("width", w);
     canvas.setAttribute("height", h);
     let context = canvas.getContext("2d");
-    let data = dataGenerator(200, 0);
-    data.forEach(function(d) {
+
+    let ds: DataSet<Example>;
+
+    if (typeof dataset === "function") {
+      ds = dataset(200, 0);
+    } else {
+      ds = dataset as DataSet<Example>;
+    }
+
+    ds.to2D().forEach(function(d) {
       context.fillStyle = colorScale(d.label);
       context.fillRect(w * (d.x + 6) / 12, h * (d.y + 6) / 12, 4, 4);
     });
@@ -1064,6 +1082,19 @@ function hideControls() {
     .attr("href", window.location.href);
 }
 
+function split(ds: DataSet<Example>) {
+  let data = ds.data;
+  // Shuffle the data in-place.
+  shuffle(data);
+  // Split into train and test data.
+  let splitIndex = Math.floor(data.length * state.percTrainData / 100);
+
+  let trainData = new DataSet(data.slice(0, splitIndex), ds.encoder);
+  let testData = new DataSet(data.slice(splitIndex), ds.encoder);
+
+  return [trainData, testData];
+}
+
 function generateData(firstTime = false) {
   if (!firstTime) {
     // Change the seed.
@@ -1074,17 +1105,39 @@ function generateData(firstTime = false) {
   Math.seedrandom(state.seed);
   let numSamples = (state.problem === Problem.REGRESSION) ?
       NUM_SAMPLES_REGRESS : NUM_SAMPLES_CLASSIFY;
-  let generator = state.problem === Problem.CLASSIFICATION ?
+  let dataset = state.problem === Problem.CLASSIFICATION ?
       state.dataset : state.regDataset;
-  let data = generator(numSamples, state.noise / 100);
-  // Shuffle the data in-place.
-  shuffle(data);
-  // Split into train and test data.
-  let splitIndex = Math.floor(data.length * state.percTrainData / 100);
-  trainData = data.slice(0, splitIndex);
-  testData = data.slice(splitIndex);
-  heatMap.updatePoints(trainData);
-  heatMap.updateTestPoints(state.showTestData ? testData : []);
+
+  let data: DataSet<Example>;
+
+  if (typeof dataset === "function") {
+    data = dataset(numSamples, state.noise / 100);
+  } else {
+    data = state.dataset as DataSet<Example>;
+  }
+
+  [trainData, testData] = split(data);
+
+  if (state.dataset == classifyDiabetes) {
+    let ignore = new Set(["x", "y", "label"]);
+    INPUTS = Object.keys(data.data[0])
+      .filter(k => !ignore.has(k))
+      .sort()
+      .reduce((obj, k) => {
+        obj[k] = {f: v => v[k], label: k};
+        return obj;
+      }, {});
+  } else {
+    INPUTS = DefaultInputs;
+  }
+
+  Object.keys(INPUTS).forEach((k, i) => state[k] = (i < 2));
+
+  let trainDataPoints = trainData.to2D();
+  let testDataPoints = testData.to2D();
+
+  heatMap.updatePoints(trainDataPoints);
+  heatMap.updateTestPoints(state.showTestData ? testDataPoints : []);
 }
 
 let firstInteraction = true;

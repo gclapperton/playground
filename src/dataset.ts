@@ -13,18 +13,44 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import * as d3 from 'd3';
+import * as d3 from "d3";
+
+
+export interface Encoder2d<T extends Example> {
+  encode(v: Example): Example2D;
+  decode(v: Point): {};
+}
+
+export class IdentityEncoder implements Encoder2d<Example> {
+  encode(v: Example): Example2D {
+    return v as Example2D;
+  }
+  decode(v: Point): {} {
+    return v;
+  }
+}
+
+export class DataSet<T extends Example> {
+  constructor(readonly data: T[],
+              readonly encoder: Encoder2d<T> = new IdentityEncoder()) {}
+  to2D(): Example2D[] {
+    return this.data.map(v => this.encoder.encode(v));
+  }
+  decode(v: Point): {} {
+    return this.encoder.decode(v);
+  }
+}
 
 /**
  * A two dimensional example: x and y coordinates with the label.
  */
-export type Example2D = {
-  x: number,
-  y: number,
+export type Example2D = Example & Point;
+
+export type Example = {
   label: number
 };
 
-type Point = {
+export type Point = {
   x: number,
   y: number
 };
@@ -50,10 +76,10 @@ export function shuffle(array: any[]): void {
   }
 }
 
-export type DataGenerator = (numSamples: number, noise: number) => Example2D[];
+export type DataGenerator = (numSamples: number, noise: number) => DataSet<Example>;
 
 export function classifyTwoGaussData(numSamples: number, noise: number):
-    Example2D[] {
+    DataSet<Example2D> {
   let points: Example2D[] = [];
 
   let varianceScale = d3.scale.linear().domain([0, .5]).range([0.5, 4]);
@@ -69,11 +95,11 @@ export function classifyTwoGaussData(numSamples: number, noise: number):
 
   genGauss(2, 2, 1); // Gaussian with positive examples.
   genGauss(-2, -2, -1); // Gaussian with negative examples.
-  return points;
+  return new DataSet(points);
 }
 
 export function regressPlane(numSamples: number, noise: number):
-  Example2D[] {
+    DataSet<Example2D> {
   let radius = 6;
   let labelScale = d3.scale.linear()
     .domain([-10, 10])
@@ -89,11 +115,11 @@ export function regressPlane(numSamples: number, noise: number):
     let label = getLabel(x + noiseX, y + noiseY);
     points.push({x, y, label});
   }
-  return points;
+  return new DataSet(points);
 }
 
 export function regressGaussian(numSamples: number, noise: number):
-  Example2D[] {
+    DataSet<Example2D> {
   let points: Example2D[] = [];
 
   let labelScale = d3.scale.linear()
@@ -130,11 +156,11 @@ export function regressGaussian(numSamples: number, noise: number):
     let label = getLabel(x + noiseX, y + noiseY);
     points.push({x, y, label});
   };
-  return points;
+  return new DataSet(points);
 }
 
 export function classifySpiralData(numSamples: number, noise: number):
-    Example2D[] {
+    DataSet<Example2D> {
   let points: Example2D[] = [];
   let n = numSamples / 2;
 
@@ -150,11 +176,11 @@ export function classifySpiralData(numSamples: number, noise: number):
 
   genSpiral(0, 1); // Positive examples.
   genSpiral(Math.PI, -1); // Negative examples.
-  return points;
+  return new DataSet(points);
 }
 
 export function classifyCircleData(numSamples: number, noise: number):
-    Example2D[] {
+    DataSet<Example2D> {
   let points: Example2D[] = [];
   let radius = 5;
   function getCircleLabel(p: Point, center: Point) {
@@ -184,11 +210,11 @@ export function classifyCircleData(numSamples: number, noise: number):
     let label = getCircleLabel({x: x + noiseX, y: y + noiseY}, {x: 0, y: 0});
     points.push({x, y, label});
   }
-  return points;
+  return new DataSet(points);
 }
 
 export function classifyXORData(numSamples: number, noise: number):
-    Example2D[] {
+    DataSet<Example2D> {
   function getXORLabel(p: Point) { return p.x * p.y >= 0 ? 1 : -1; }
 
   let points: Example2D[] = [];
@@ -203,7 +229,7 @@ export function classifyXORData(numSamples: number, noise: number):
     let label = getXORLabel({x: x + noiseX, y: y + noiseY});
     points.push({x, y, label});
   }
-  return points;
+  return new DataSet(points);
 }
 
 /**

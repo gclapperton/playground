@@ -15,6 +15,7 @@ limitations under the License.
 
 import * as nn from "./nn";
 import * as dataset from "./dataset";
+import * as diabetes from "./diabetes";
 
 /** Suffix added to the state when storing if a control is hidden or not. */
 const HIDE_STATE_SUFFIX = "_hide";
@@ -35,11 +36,12 @@ export let regularizations: {[key: string]: nn.RegularizationFunction} = {
 };
 
 /** A map between dataset names and functions that generate classification data. */
-export let datasets: {[key: string]: dataset.DataGenerator} = {
+export let datasets: {[key: string]: dataset.DataGenerator | dataset.DataSet<any>} = {
   "circle": dataset.classifyCircleData,
   "xor": dataset.classifyXORData,
   "gauss": dataset.classifyTwoGaussData,
   "spiral": dataset.classifySpiralData,
+  "diabetes": diabetes.classifyDiabetes,
 };
 
 /** A map between dataset names and functions that generate regression data. */
@@ -160,8 +162,8 @@ export class State {
   sinX = false;
   cosY = false;
   sinY = false;
-  dataset: dataset.DataGenerator = dataset.classifyCircleData;
-  regDataset: dataset.DataGenerator = dataset.regressPlane;
+  dataset: dataset.DataGenerator | dataset.DataSet<dataset.Example> = dataset.classifyCircleData;
+  regDataset: dataset.DataGenerator | dataset.DataSet<dataset.Example> = dataset.regressPlane;
   seed: string;
 
   /**
