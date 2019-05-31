@@ -1119,9 +1119,8 @@ function generateData(firstTime = false) {
   [trainData, testData] = split(data);
 
   if (state.dataset == classifyDiabetes) {
-    let ignore = new Set(["x", "y", "label"]);
     INPUTS = Object.keys(data.data[0])
-      .filter(k => !ignore.has(k))
+      .filter(k => k != "label")
       .sort()
       .reduce((obj, k) => {
         obj[k] = {f: v => v[k], label: k};
