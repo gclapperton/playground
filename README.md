@@ -1,5 +1,7 @@
 # Deep playground
 
+> Modified to include the [diabetes dataset](https://raw.githubusercontent.com/plotly/datasets/master/diabetes.csv) from [plotly](https://plot.ly/). Uses PCA (principle component analysis) to visualize the multidimensional dataset in the two dimensional "heatmaps"
+
 Deep playground is an interactive visualization of neural networks, written in
 TypeScript using d3.js. We use GitHub issues for tracking new requests and bugs.
 Your feedback is highly appreciated!
