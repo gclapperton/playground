@@ -30,7 +30,7 @@ export class PCAEncoder {
   eigenvectors: Matrix;
   fields: string[];
   constructor(data: Example[]) {
-    this.fields = Object.keys(data[0]).filter(v => v != "Outcome");
+    this.fields = Object.keys(data[0]).filter(v => v != "label");
     let X = data.map(v => this.fields.map(c => v[c]));
 
     let pca = new PCA(X);
