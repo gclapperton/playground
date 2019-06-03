@@ -1,8 +1,9 @@
 {
   "name": "deep-playground-prototype",
-  "version": "2016.3.10",
+  "_version": "$(date +%Y.%m.%d-%s)",
   "description": "",
   "private": true,
+  "docker_repository": "gcr.io/com-clptn-primary/playground",
   "scripts": {
     "clean": "rimraf dist",
     "start": "npm run serve-watch",
@@ -18,7 +19,7 @@
     "serve": "http-server -o -c-1 dist/",
     "serve-watch": "concurrently \"http-server -o -c-1 dist/\" \"npm run watch\"",
     "docker-build": "docker build -t playground .",
-    "docker-push": "docker tag playground gcr.io/com-clptn-primary/playground && docker push gcr.io/com-clptn-primary/playground"
+    "docker-push": "IMAGE=${npm_package_docker_repository}:$(date +%Y.%m.%d-%s) && docker tag playground $IMAGE && docker push $IMAGE"
   },
   "devDependencies": {
     "@types/d3": "3.5.41",
